@@ -1,0 +1,38 @@
+# 프로젝트 폴더로 이동
+cd C:\Project
+
+# 새 가상환경
+python -m venv .venv
+.venv\Scripts\activate
+
+# pip 업그레이드
+python -m pip install --upgrade pip
+
+# PyTorch (CUDA 11.8 예시)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# OpenMIM (mmpose용)
+pip install -U openmim
+mim install "mmengine==0.10.5"
+mim install "mmcv==2.1.0"
+mim install "mmdet==3.2.0"
+mim install "mmpose==1.3.2"
+pip install -U fastapi starlette jinja2
+
+# YOLOv8
+pip install "ultralytics==8.2.0"
+
+# 기타 공통 라이브러리
+pip install "opencv-python==4.10.0.84" "numpy==2.1.0" "lap==0.5.13"
+
+
+# 서버 실행 (app:app 기준)
+python -m uvicorn app:app --host 0.0.0.0 --port 8000
+
+
+# 서버에서 영상 분석 POST (실행하면 job_id 나옴)
+curl.exe -X POST "http://127.0.0.1:8000/upload" -F "file=@C:\Project\test.mp4"
+
+
+# 영상 분석 상태 조회
+curl.exe "http://127.0.0.1:8000/status/job_id"

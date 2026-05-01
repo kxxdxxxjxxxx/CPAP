@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Climbing Pose Analyzer Pro</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #171a21;
+      --accent: #4caf50;
+      --text: #e6e6e6;
+      --muted: #9aa0a6;
+      --border: #2a2f3a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Pretendard", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      padding: 30px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+
+    /* ✅ 단일 드롭존 스타일 */
+    #dropzone {
+      position: relative;
+      border: 2px dashed #444;
+      border-radius: 14px;
+      height: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: .2s;
+      overflow: hidden;
+      background: #101218;
+      cursor: pointer;
+    }
+
+    #dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(76, 175, 80, .08);
+    }
+
+    #preview-box {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #preview-thumb {
+      max-height: 120px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, .75);
+      color: #fff;
+      z-index: 10;
+    }
+
+    .overlay.active {
+      display: flex;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(255, 255, 255, .3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .option-group {
+      margin: 15px 0;
+      padding: 15px;
+      background: #1b1f27;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: .2s;
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+    }
+
+    /* 비교 섹션 */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .video-list {
+      max-height: 200px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      background: #0c0e12;
+      margin-top: 8px;
+    }
+
+    .video-item {
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .video-item.active {
+      background: #2a3a2f;
+      color: #fff;
+      border-left: 4px solid var(--accent);
+    }
+
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      height: 400px;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transform-origin: center center;
+      cursor: grab;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1 style="color:var(--accent);">🎥 Climbing Analyzer Pro</h1>
+
+    <div class="card">
+      <div id="dropzone">
+        <div id="prompt"><span>분석할 영상을 이곳에 드래그하세요</span></div>
+        <div id="preview-box">
+          <img id="preview-thumb" src="">
+          <div id="preview-name" style="font-size:14px; margin-top:5px;"></div>
+        </div>
+        <div class="overlay" id="overlay">
+          <div class="spinner"></div><span>　영상 분석 중...</span>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <b>분석 모드:</b>
+        <label style="margin-left:15px;"><input type="radio" name="display_option" value="no_ears" checked> 전체 관절 (코, 귀
+          제외)</label>
+        <label style="margin-left:15px;"><input type="radio" name="display_option" value="tips"> 손끝/발끝만 표시</label>
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button class="btn" id="analyzeBtn" disabled>🚀 분석 시작</button>
+        <button class="btn" style="background:#444;" onclick="location.reload()">🔄 초기화</button>
+      </div>
+      <div id="status" style="margin-top:10px; font-size:14px; color:var(--muted);">영상을 선택해주세요.</div>
+      <div class="progress" style="height:6px; background:#222; border-radius:3px; margin-top:10px; overflow:hidden;">
+        <div id="progressBar" style="height:100%; width:0%; background:var(--accent); transition:width .3s;"></div>
+      </div>
+      <input type="file" id="fileInput" accept="video/*" hidden />
+    </div>
+
+    <div class="card">
+      <div class="compare-grid">
+        <div>
+          <div>① 비교 대상 A 선택</div>
+          <div class="video-list" id="listA"></div>
+        </div>
+        <div>
+          <div>② 비교 대상 B 선택</div>
+          <div class="video-list" id="listB"></div>
+        </div>
+      </div>
+
+      <div style="margin: 15px 0; display:flex; gap:10px; align-items:center;">
+        <button class="btn" style="background:#222; border:1px solid #444;" id="btnPlayBoth">▶ 동시 재생</button>
+        <button class="btn" style="background:#222; border:1px solid #444;" id="btnPauseBoth">⏸ 동시 정지</button>
+        <select id="speedSelect"
+          style="background:#1b1f27; color:#fff; border:1px solid var(--border); border-radius:6px; padding:8px;">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1.0x</option>
+          <option value="1.5">1.5x</option>
+        </select>
+      </div>
+
+      <div class="compare-grid">
+        <div class="video-wrap" id="wrapA"><video id="videoA" controls muted playsinline></video></div>
+        <div class="video-wrap" id="wrapB"><video id="videoB" controls muted playsinline></video></div>
+      </div>
+    </div>
+    <canvas id="hidden-canvas" style="display:none;"></canvas>
+  </div>
+
+  <script>
+    let selectedFile = null;
+    const fileInput = document.getElementById("fileInput");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+
+    // 드롭존 처리
+    const dz = document.getElementById("dropzone");
+    dz.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+    dz.ondragover = e => { e.preventDefault(); dz.classList.add("dragover"); };
+    dz.ondragleave = () => dz.classList.remove("dragover");
+    dz.ondrop = e => { e.preventDefault(); dz.classList.remove("dragover"); handleFile(e.dataTransfer.files[0]); };
+
+    function handleFile(file) {
+      selectedFile = file;
+      document.getElementById("preview-name").textContent = file.name;
+      const v = document.createElement('video');
+      v.src = URL.createObjectURL(file);
+      v.onloadeddata = () => v.currentTime = 0.5;
+      v.onseeked = () => {
+        const cvs = document.getElementById("hidden-canvas");
+        cvs.width = v.videoWidth; cvs.height = v.videoHeight;
+        cvs.getContext('2d').drawImage(v, 0, 0);
+        document.getElementById("preview-thumb").src = cvs.toDataURL();
+        document.getElementById("prompt").style.display = "none";
+        document.getElementById("preview-box").style.display = "flex";
+        analyzeBtn.disabled = false;
+      };
+    }
+
+    // 분석 실행
+    analyzeBtn.onclick = () => {
+      const opt = document.querySelector('input[name="display_option"]:checked').value;
+      document.getElementById("overlay").classList.add("active");
+      const fd = new FormData();
+      fd.append("file", selectedFile);
+      fd.append("display_option", opt);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/upload");
+      xhr.onload = () => {
+        const data = JSON.parse(xhr.responseText);
+        pollStatus(data.job_id);
+      };
+      xhr.send(fd);
+    };
+
+    async function pollStatus(id) {
+      const timer = setInterval(async () => {
+        const res = await fetch(`/status/${id}`);
+        const data = await res.json();
+        if (data.status === "done") {
+          clearInterval(timer);
+          document.getElementById("overlay").classList.remove("active");
+          loadVideoList();
+        }
+      }, 1500);
+    }
+
+    // 줌 및 목록 로직
+    function setupZoom(video, wrap) {
+      let s = 1, tx = 0, ty = 0, down = false, sx, sy;
+      wrap.onwheel = e => { e.preventDefault(); s = Math.min(4, Math.max(1, s + (e.deltaY > 0 ? -0.1 : 0.1))); video.style.transform = `translate(${tx}px,${ty}px) scale(${s})`; };
+      wrap.onmousedown = e => { down = true; sx = e.clientX - tx; sy = e.clientY - ty; };
+      window.onmouseup = () => down = false;
+      window.onmousemove = e => { if (down) { tx = e.clientX - sx; ty = e.clientY - sy; video.style.transform = `translate(${tx}px,${ty}px) scale(${s})`; } };
+    }
+    setupZoom(document.getElementById("videoA"), document.getElementById("wrapA"));
+    setupZoom(document.getElementById("videoB"), document.getElementById("wrapB"));
+
+    async function loadVideoList() {
+      const res = await fetch("/videos"); const data = await res.json();
+      ['listA', 'listB'].forEach(id => {
+        const container = document.getElementById(id);
+        container.innerHTML = "";
+        data.videos.forEach(v => {
+          const el = document.createElement("div"); el.className = "video-item"; el.textContent = v.name;
+          el.onclick = () => {
+            const vidTag = (id === 'listA') ? document.getElementById("videoA") : document.getElementById("videoB");
+            vidTag.src = v.url + "?t=" + Date.now();
+            [...container.children].forEach(c => c.classList.remove("active")); el.classList.add("active");
+          };
+          container.appendChild(el);
+        });
+      });
+    }
+    document.getElementById("btnPlayBoth").onclick = () => { document.getElementById("videoA").play(); document.getElementById("videoB").play(); };
+    document.getElementById("btnPauseBoth").onclick = () => { document.getElementById("videoA").pause(); document.getElementById("videoB").pause(); };
+    document.getElementById("speedSelect").onchange = e => { document.getElementById("videoA").playbackRate = document.getElementById("videoB").playbackRate = parseFloat(e.target.value); };
+    loadVideoList();
+  </script>
+</body>
+
+</html>

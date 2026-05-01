@@ -1,0 +1,13 @@
+train: C:\Project\train\images
+val: C:\Project\train\val
+test: C:\Project\train\val
+
+nc: 16
+names: ['black-hold', 'black-pink-hold', 'black-white-hold', 'black-yellow-hold', 'blue-hold', 'brown-hold', 'cyan-hold', 'gray-hold', 'green-hold', 'orange-hold', 'pink-hold', 'purple-hold', 'red-hold', 'white-hold', 'yellow-hold', 'yellow-purple-hold']
+
+roboflow:
+  workspace: dongjoon
+  project: dongjoon
+  version: dataset
+  license: Private
+  url: https://app.roboflow.com/dongjoon/dongjoon/dataset

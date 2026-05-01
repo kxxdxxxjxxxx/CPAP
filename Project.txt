@@ -1,0 +1,7 @@
+project/
+ ├─ app.py
+ ├─ pipeline.py
+ ├─ cog.py
+ ├─ requirements.txt
+ ├─ outputs/
+ └─ uploads/

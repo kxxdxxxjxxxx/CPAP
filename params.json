@@ -1,0 +1,11 @@
+{
+  "occlusion_threshold": 0.3,
+  "occlusion_search_radius": 150.0,
+  "smoothing_alpha": 0.5,
+  "hold_conf": 0.1,
+  "pose_conf": 0.35,
+  "arm_extension": 0.05,
+  "leg_extension": 0.08,
+  "hold_model_path": "C:/Project/label_sessions/260430/_work/runs/train/weights/best.pt",
+  "pose_model_path": "C:/Project/pose_sessions/260501/_work/runs/pose_train/weights/best.pt"
+}

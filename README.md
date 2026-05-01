@@ -1,6 +1,5 @@
-# CPAP
+# CPAP(ClimbingPoseAnalyzerPro)
 
-# ClimbingPoseAnalyzer
 
 클라이밍 영상 포즈 분석 플랫폼. Vercel에 배포된 Next.js 웹에서 로컬 FastAPI 서버를 연결하여 사용합니다.
 

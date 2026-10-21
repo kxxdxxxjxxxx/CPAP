@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Video, GitCompare, Target, Sliders, ChevronRight, X } from "lucide-react";
+import { Video, GitCompare, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -10,25 +10,13 @@ const navItems = [
     href: "/",
     icon: Video,
     label: "영상 분석",
-    description: "클라이밍 영상 업로드 및 포즈 분석",
+    description: "영상 업로드 후 무게중심·속도 분석",
   },
   {
     href: "/compare",
     icon: GitCompare,
     label: "영상 비교",
     description: "분석된 영상 A/B 비교 재생",
-  },
-  {
-    href: "/train",
-    icon: Target,
-    label: "홀드 학습",
-    description: "벽 사진으로 홀드 탐지 모델 학습",
-  },
-  {
-    href: "/params",
-    icon: Sliders,
-    label: "파라미터 튜닝",
-    description: "관절 보정 및 분석 파라미터 조정",
   },
 ];
 
@@ -104,7 +92,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
           <p className="text-xs text-muted">
             외부 접속:{" "}
-            <code className="font-mono text-accent/80 text-[10px]">python app.py --ngrok</code>
+            <code className="font-mono text-accent/80 text-[10px]">python server/app.py --ngrok</code>
           </p>
         </div>
       </div>

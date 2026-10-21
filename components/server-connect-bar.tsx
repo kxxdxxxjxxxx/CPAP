@@ -227,10 +227,10 @@ export default function ServerConnectBar({ onStatusChange, onToggleSidebar, side
               <p className="text-muted">2. 서버 실행 (ngrok 자동 시작 포함)</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-background px-3 py-1.5 rounded font-mono text-accent border border-border">
-                  python app.py --ngrok
+                  python server/app.py --ngrok
                 </code>
                 <button
-                  onClick={() => handleCopy("python app.py --ngrok")}
+                  onClick={() => handleCopy("python server/app.py --ngrok")}
                   className="p-1.5 rounded bg-surface border border-border text-muted hover:text-accent transition-colors"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}

@@ -1,0 +1,10 @@
+# GPU용 PyTorch는 먼저 따로 설치 (예: CUDA 11.8)
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+fastapi
+uvicorn
+python-multipart
+ultralytics
+opencv-python
+numpy
+scipy
+ngrok

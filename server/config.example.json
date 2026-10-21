@@ -1,0 +1,4 @@
+{
+  "pose_model_path": "C:/Project/pose_sessions/260514/_work/runs/pose_train/weights/best.pt",
+  "pose_conf": 0.25
+}

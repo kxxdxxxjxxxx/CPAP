@@ -309,6 +309,34 @@ def list_videos():
 # ────────────────────────────────────────────────────────────────────────────
 # ngrok
 # ────────────────────────────────────────────────────────────────────────────
+def _find_ngrok_token(cli_token=""):
+    """토큰 찾는 순서: --token → NGROK_AUTHTOKEN 환경변수 → ngrok 프로그램 설정 파일(ngrok config add-authtoken)."""
+    if cli_token:
+        return cli_token, "--token"
+    if os.environ.get("NGROK_AUTHTOKEN"):
+        return os.environ["NGROK_AUTHTOKEN"], "NGROK_AUTHTOKEN 환경변수"
+    home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(os.environ.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local")), "ngrok", "ngrok.yml"),
+        os.path.join(home, "AppData", "Roaming", "ngrok", "ngrok.yml"),
+        os.path.join(home, ".config", "ngrok", "ngrok.yml"),
+        os.path.join(home, "Library", "Application Support", "ngrok", "ngrok.yml"),
+        os.path.join(home, ".ngrok2", "ngrok.yml"),
+    ]
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("authtoken:"):
+                        tok = line.split(":", 1)[1].strip().strip("'\"")
+                        if tok:
+                            return tok, path
+        except OSError:
+            continue
+    return "", ""
+
+
 def _start_ngrok(port, token=""):
     global _ngrok_url
     try:
@@ -321,7 +349,13 @@ def _start_ngrok(port, token=""):
     except ImportError:
         print("[ERROR] ngrok 패키지가 없습니다: pip install ngrok")
     except Exception as e:
-        print(f"[ERROR] ngrok 시작 실패: {e} (NGROK_AUTHTOKEN 환경변수 또는 --token 확인)")
+        print(f"[ERROR] ngrok 시작 실패: {e}")
+        if "4018" in str(e) or "authenticated" in str(e):
+            print("  → ngrok 토큰이 없거나 잘못되었습니다. 아래 중 하나를 실행한 뒤 다시 시작하세요.")
+            print("     1) 이번 창에서만:  set NGROK_AUTHTOKEN=토큰")
+            print("     2) 영구 저장:      setx NGROK_AUTHTOKEN 토큰   (새 cmd 창에서 적용)")
+            print("     토큰 확인: https://dashboard.ngrok.com/get-started/your-authtoken")
+        print("  (서버는 http://localhost 로는 계속 사용할 수 있습니다)")
 
 
 if __name__ == "__main__":
@@ -334,9 +368,15 @@ if __name__ == "__main__":
     ap.add_argument("--token", default="")
     a = ap.parse_args()
     if a.ngrok:
-        threading.Thread(target=_start_ngrok, args=(a.port, a.token or os.environ.get("NGROK_AUTHTOKEN", "")),
-                         daemon=True).start()
-        time.sleep(2)
+        tok, src = _find_ngrok_token(a.token)
+        if tok:
+            print(f"[ngrok] 토큰 사용: {src}")
+            threading.Thread(target=_start_ngrok, args=(a.port, tok), daemon=True).start()
+            time.sleep(2)
+        else:
+            print("[ngrok] 토큰을 찾지 못해 ngrok 없이 시작합니다.")
+            print("  → set NGROK_AUTHTOKEN=토큰  (또는 setx 로 영구 저장) 후 다시 실행하세요.")
+            print("     토큰 확인: https://dashboard.ngrok.com/get-started/your-authtoken")
     print(f"\nCPAP 분석 서버 v{VERSION}: http://localhost:{a.port}")
     print(f"포즈 모델: {CFG['pose_model_path']}\n")
     uvicorn.run(app, host=a.host, port=a.port, reload=False)

@@ -18,7 +18,9 @@ function isMixedContent(serverUrl: string): boolean {
   if (typeof window === "undefined") return false;
   const pageIsHttps = window.location.protocol === "https:";
   const serverIsHttp = serverUrl.startsWith("http://");
-  return pageIsHttps && serverIsHttp;
+  // 같은 PC의 localhost / 127.0.0.1 은 최신 브라우저가 HTTPS 페이지에서도 연결을 허용한다
+  const isLoopback = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(serverUrl);
+  return pageIsHttps && serverIsHttp && !isLoopback;
 }
 
 export default function ServerConnectBar({ onStatusChange, onToggleSidebar, sidebarOpen }: ServerConnectBarProps) {
@@ -199,9 +201,11 @@ export default function ServerConnectBar({ onStatusChange, onToggleSidebar, side
           <div className="flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
             <p className="text-foreground leading-relaxed">
-              <span className="font-semibold text-warning">HTTPS 보안 정책</span>으로 인해 배포된 웹({typeof window !== "undefined" ? window.location.hostname : "vercel.app"})에서는
-              <span className="font-mono text-danger"> http://localhost</span> 직접 연결이 차단됩니다.{" "}
-              <span className="font-semibold text-accent">ngrok</span>을 사용하면 로컬 서버에 HTTPS URL을 발급받아 연결할 수 있습니다.
+              <span className="font-semibold text-accent">같은 PC</span>에서 서버를 실행했다면
+              <span className="font-mono text-accent"> http://localhost:8000</span> 을 그대로 입력하면 됩니다.
+              (브라우저가 &apos;로컬 네트워크 접근&apos; 허용을 물으면 허용을 눌러 주세요.){" "}
+              <span className="font-semibold text-warning">다른 기기(휴대폰·태블릿 등)</span>에서 접속하려면
+              <span className="font-semibold text-accent"> ngrok</span>으로 HTTPS 주소를 발급받아 연결하세요.
             </p>
           </div>
 
@@ -227,10 +231,10 @@ export default function ServerConnectBar({ onStatusChange, onToggleSidebar, side
               <p className="text-muted">2. 서버 실행 (ngrok 자동 시작 포함)</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-background px-3 py-1.5 rounded font-mono text-accent border border-border">
-                  python app.py --ngrok
+                  python server/app.py --ngrok
                 </code>
                 <button
-                  onClick={() => handleCopy("python app.py --ngrok")}
+                  onClick={() => handleCopy("python server/app.py --ngrok")}
                   className="p-1.5 rounded bg-surface border border-border text-muted hover:text-accent transition-colors"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-accent" /> : <Copy className="w-3.5 h-3.5" />}

@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Climbing Pose Analyzer",
-  description: "클라이밍 영상 포즈 분석, 홀드 탐지 학습, 관절 보정 파라미터 튜닝 플랫폼",
-  keywords: ["클라이밍", "포즈 분석", "YOLO", "AI", "스포츠 분석"],
+  description: "클라이밍 영상의 무게중심 궤적과 이동 속도를 분석하는 강습 보조 도구",
+  keywords: ["클라이밍", "무게중심", "동작 분석", "강습"],
 };
 
 export const viewport: Viewport = {

@@ -83,6 +83,8 @@ app.add_middleware(
 async def ngrok_bypass(request, call_next):
     response = await call_next(request)
     response.headers["ngrok-skip-browser-warning"] = "true"
+    # 크롬 로컬 네트워크 접근: HTTPS(Vercel) 페이지가 같은 PC의 localhost 서버를 부를 때 필요
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
     return response
 
 

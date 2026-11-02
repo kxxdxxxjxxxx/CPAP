@@ -10,6 +10,7 @@ import {
   ClimberProfile, loadProfiles, upsertProfile, deleteProfile, getLastProfileId, setLastProfileId,
   validBody, HEIGHT_RANGE, WINGSPAN_RANGE,
 } from "@/lib/profiles";
+import { loadActiveJob, saveActiveJob, clearActiveJob } from "@/lib/active-job";
 import { cn } from "@/lib/utils";
 
 type JobStatus = "idle" | "uploading" | "queued" | "processing" | "done" | "failed";
@@ -59,11 +60,14 @@ export default function AnalyzePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showGuide, setShowGuide] = useState(true);
+  const [activeFileName, setActiveFileName] = useState("");   // 다른 화면에 갔다 와도 진행 중인 작업 이름 표시
+  const [fileError, setFileError] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const runningRef = useRef(false);
 
   // 저장된 프로필 불러오기
   useEffect(() => {
@@ -72,6 +76,14 @@ export default function AnalyzePage() {
     const last = getLastProfileId();
     const p = list.find((x) => x.id === last) || list[0];
     if (p) applyProfile(p);
+    // 분석 중에 다른 화면으로 갔다가 돌아온 경우: 그 작업을 이어서 보여준다
+    const active = loadActiveJob();
+    if (active) {
+      setJobId(active.jobId);
+      setActiveFileName(active.fileName);
+      setJobInfo({ status: "queued" });
+      pollStatus(active.jobId);
+    }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -142,10 +154,19 @@ export default function AnalyzePage() {
   };
 
   const handleFile = useCallback((f: File) => {
-    if (!f.type.startsWith("video/")) return;
+    if (runningRef.current) return;   // 분석 중에는 영상을 바꿀 수 없다
+    // 일부 휴대폰은 파일 형식(type)을 비워서 보내므로 확장자로도 확인
+    const isVideo = f.type.startsWith("video/") || /\.(mp4|mov|m4v|avi|mkv|webm|3gp|hevc)$/i.test(f.name);
+    if (!isVideo) {
+      setFileError("영상 파일만 올릴 수 있어요.");
+      return;
+    }
+    setFileError("");
     setFile(f);
     setJobInfo({ status: "idle" });
     setJobId("");
+    setActiveFileName("");
+    clearActiveJob();
     clearResult();
     generateThumbnail(f);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,6 +175,7 @@ export default function AnalyzePage() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    if (runningRef.current) return;
     const f = e.dataTransfer.files[0];
     if (f) handleFile(f);
   };
@@ -179,6 +201,13 @@ export default function AnalyzePage() {
     pollRef.current = setInterval(async () => {
       try {
         const res = await apiFetch(`/status/${id}`);
+        if (res.status === 404) {
+          // 서버에 없는 작업 (서버 데이터가 지워진 경우 등)
+          clearInterval(pollRef.current!);
+          clearActiveJob();
+          setJobInfo({ status: "failed", error: "서버에서 이 분석 작업을 찾을 수 없어요. 영상을 다시 올려주세요." });
+          return;
+        }
         if (!res.ok) return;
         const data: JobInfo = await res.json();
         setJobInfo(data);
@@ -187,6 +216,7 @@ export default function AnalyzePage() {
           loadResult(id);
         } else if (data.status === "failed") {
           clearInterval(pollRef.current!);
+          clearActiveJob();
         }
       } catch {
         // 서버 연결 문제 - 폴링 계속
@@ -213,6 +243,8 @@ export default function AnalyzePage() {
         return;
       }
       setJobId(data.job_id);
+      setActiveFileName(file.name);
+      saveActiveJob({ jobId: data.job_id, fileName: file.name });
       setJobInfo({ status: "queued" });
       pollStatus(data.job_id);
     } catch {
@@ -221,7 +253,11 @@ export default function AnalyzePage() {
   };
 
   const handleReset = () => {
+    if (runningRef.current) return;
     if (pollRef.current) clearInterval(pollRef.current);
+    clearActiveJob();
+    setActiveFileName("");
+    setFileError("");
     setFile(null);
     setPreviewUrl("");
     setJobId("");
@@ -238,6 +274,15 @@ export default function AnalyzePage() {
   };
 
   const isRunning = ["uploading", "queued", "processing"].includes(jobInfo.status);
+  runningRef.current = isRunning;
+
+  // 업로드 중에 창을 닫거나 새로고침하면 업로드가 끊기므로 한 번 묻는다
+  useEffect(() => {
+    if (jobInfo.status !== "uploading") return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [jobInfo.status]);
   const isDone = jobInfo.status === "done";
   const isFailed = jobInfo.status === "failed";
   const canAnalyze = !!file && !bodyError && !isRunning;
@@ -373,18 +418,35 @@ export default function AnalyzePage() {
 
       {/* 2. 영상 */}
       <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">2. 영상</p>
-      <div
+      {/* 박스 전체가 파일 입력창의 label: 휴대폰에서도 누르면 브라우저가 직접 선택창을 연다 */}
+      <input
+        id="video-input"
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        className="sr-only"
+        disabled={isRunning}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = "";   // 같은 영상을 다시 골라도 반응하도록
+        }}
+      />
+      <label
+        htmlFor="video-input"
+        aria-disabled={isRunning}
         className={cn(
-          "relative rounded-lg border-2 border-dashed transition-all cursor-pointer",
-          isDragOver ? "border-accent bg-accent-dim" : "border-border hover:border-accent/50",
-          file ? "bg-surface p-4" : "bg-surface p-10"
+          "relative block rounded-lg border-2 border-dashed transition-all select-none",
+          isRunning
+            ? "border-border opacity-60 cursor-not-allowed pointer-events-none"
+            : isDragOver ? "border-accent bg-accent-dim cursor-pointer" : "border-border hover:border-accent/50 cursor-pointer",
+          file || activeFileName ? "bg-surface p-4" : "bg-surface p-10"
         )}
-        onClick={() => !file && fileInputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+        onDragOver={(e) => { e.preventDefault(); if (!isRunning) setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
-        {file ? (
+        {file || activeFileName ? (
           <div className="flex items-start gap-4">
             {previewUrl ? (
               <img src={previewUrl} alt="영상 썸네일" className="w-32 h-20 object-cover rounded-lg shrink-0 bg-surface-2" />
@@ -394,15 +456,14 @@ export default function AnalyzePage() {
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
-              <p className="text-xs text-muted mt-0.5">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
-              {!isRunning && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                  className="mt-2 text-xs text-accent hover:underline"
-                >
-                  다른 파일 선택
-                </button>
+              <p className="text-sm font-medium text-foreground truncate">{file?.name || activeFileName}</p>
+              {file && <p className="text-xs text-muted mt-0.5">{(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+              {isRunning ? (
+                <p className="mt-2 text-xs text-warning">분석 중에는 영상을 바꿀 수 없어요.</p>
+              ) : (
+                <span className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-accent bg-accent-dim border border-accent/30">
+                  <Upload className="w-3.5 h-3.5" /> 다른 영상 선택
+                </span>
               )}
             </div>
           </div>
@@ -412,19 +473,13 @@ export default function AnalyzePage() {
               <Upload className="w-6 h-6 text-muted" />
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">영상 파일을 드래그하거나 클릭하여 선택</p>
+              <p className="text-sm font-medium text-foreground">눌러서 영상 선택 <span className="hidden sm:inline">또는 끌어다 놓기</span></p>
               <p className="text-xs text-muted mt-1">MP4, MOV 등 영상 형식 지원</p>
             </div>
           </div>
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="video/*"
-          className="hidden"
-          onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
-        />
-      </div>
+      </label>
+      {fileError && <p className="mt-2 text-xs text-danger">{fileError}</p>}
 
       {/* 실행 버튼 */}
       <div className="mt-4 flex gap-3">
@@ -443,7 +498,12 @@ export default function AnalyzePage() {
         </button>
         <button
           onClick={handleReset}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm text-muted bg-surface-2 border border-border hover:text-foreground transition-colors"
+          disabled={isRunning}
+          title={isRunning ? "분석이 끝난 뒤 초기화할 수 있어요" : undefined}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm border border-border transition-colors",
+            isRunning ? "text-muted/50 bg-surface-2 cursor-not-allowed" : "text-muted bg-surface-2 hover:text-foreground"
+          )}
         >
           <RotateCcw className="w-4 h-4" />
           초기화
@@ -475,6 +535,14 @@ export default function AnalyzePage() {
                   ? ` (앞에 ${jobInfo.queue_position - 1}개)` : ""}
               </p>
               {jobId && <p className="text-xs text-muted mt-0.5 font-mono">Job ID: {jobId}</p>}
+              {isRunning && jobInfo.status !== "uploading" && (
+                <p className="text-xs text-muted mt-1 leading-relaxed">
+                  분석은 PC 서버에서 계속됩니다. 다른 메뉴로 갔다가 돌아와도 이어서 볼 수 있어요.
+                </p>
+              )}
+              {jobInfo.status === "uploading" && (
+                <p className="text-xs text-warning mt-1 leading-relaxed">업로드가 끝날 때까지 이 화면을 닫지 마세요.</p>
+              )}
               {isFailed && jobInfo.error && (
                 <p className="text-xs text-danger/80 mt-1 leading-relaxed">{jobInfo.error}</p>
               )}

@@ -21,43 +21,54 @@ export default function ComparePage() {
   const videos = data?.videos || [];
   const keyOf = (v: VideoItem) => v.job_id || v.url;
 
+  type Target = "A" | "B" | "both";
   const [selA, setSelA] = useState("");
   const [selB, setSelB] = useState("");
+  const [target, setTarget] = useState<Target>("both");   // 조작할 영상
   const [speed, setSpeed] = useState(1);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [time, setTime] = useState(0);
+  const [playA, setPlayA] = useState(false);
+  const [playB, setPlayB] = useState(false);
+  const [tA, setTA] = useState(0);
+  const [tB, setTB] = useState(0);
   const [durA, setDurA] = useState(0);
   const [durB, setDurB] = useState(0);
 
   const refA = useRef<ZoomableVideoHandle>(null);
   const refB = useRef<ZoomableVideoHandle>(null);
-  const both = (f: (r: ZoomableVideoHandle) => void) => { [refA, refB].forEach((r) => r.current && f(r.current)); };
-
   const pathOf = (key: string) => videos.find((v) => keyOf(v) === key)?.url || "";
-  const duration = Math.max(durA, durB);
-  const hasVideo = !!(selA || selB);
+
+  // 지금 조작 대상인 영상들 (선택되지 않은 영상은 제외)
+  const sides = (): ("A" | "B")[] =>
+    (target === "both" ? (["A", "B"] as const) : [target]).filter((x) => (x === "A" ? selA : selB)) as ("A" | "B")[];
+  const refOf = (x: "A" | "B") => (x === "A" ? refA : refB).current;
+  const each = (f: (r: ZoomableVideoHandle, x: "A" | "B") => void) => sides().forEach((x) => { const r = refOf(x); if (r) f(r, x); });
+
+  const hasTarget = sides().length > 0;
+  const playing = sides().some((x) => (x === "A" ? playA : playB));
+  // 재생바는 동시 모드면 A(없으면 B) 기준, 개별 모드면 그 영상 기준
+  const lead: "A" | "B" = target === "B" || (target === "both" && !selA) ? "B" : "A";
+  const time = lead === "A" ? tA : tB;
+  const duration = lead === "A" ? durA : durB;
 
   const select = (side: "A" | "B", key: string) => {
-    both((r) => r.pause());
-    setIsPlaying(false);
-    setTime(0);
-    if (side === "A") { setSelA(key); setDurA(0); } else { setSelB(key); setDurB(0); }
+    refOf(side)?.pause();
+    if (side === "A") { setSelA(key); setDurA(0); setTA(0); } else { setSelB(key); setDurB(0); setTB(0); }
   };
 
-  const play = () => { both((r) => { r.setPlaybackRate(speed); r.play(); }); setIsPlaying(true); };
-  const pause = () => { both((r) => r.pause()); setIsPlaying(false); };
-  const seekAll = (t: number) => { both((r) => r.seek(t)); setTime(t); };
-  const step = (d: number) => { pause(); seekAll(Math.min(Math.max(0, time + d), duration)); };
-  const changeSpeed = (r: number) => { setSpeed(r); both((v) => v.setPlaybackRate(r)); };
+  const play = () => each((r) => { r.setPlaybackRate(speed); r.play(); });
+  const pause = () => each((r) => r.pause());
+  // 동시 모드에서 이동하면 두 영상을 같은 만큼 움직여 서로 맞춰둔 시작점이 유지된다
+  const moveBy = (d: number) => { pause(); each((r) => r.seek(r.currentTime() + d)); };
+  const seekTo = (t: number) => { const cur = refOf(lead)?.currentTime() ?? time; moveBy(t - cur); };
+  const toStart = () => {
+    pause();
+    if (target === "both") { const m = Math.min(...sides().map((x) => refOf(x)?.currentTime() ?? 0)); moveBy(-m); }
+    else each((r) => r.seek(0));
+  };
+  const changeSpeed = (r: number) => { setSpeed(r); [refA, refB].forEach((x) => x.current?.setPlaybackRate(r)); };
 
-  // 더 긴 영상의 시간을 공통 재생바에 표시
   const onTime = (side: "A" | "B") => (t: number, d: number) => {
-    if (side === "A") setDurA(d); else setDurB(d);
-    const leader = durA >= durB ? "A" : "B";
-    if (side === leader || !(selA && selB)) {
-      setTime(t);
-      if (d && t >= d - 0.05) setIsPlaying(false);
-    }
+    if (side === "A") { setTA(t); setDurA(d); } else { setTB(t); setDurB(d); }
   };
 
   // 컴포넌트가 아닌 함수로 그려야 재생 중 다시 그려져도 선택 상자가 닫히지 않는다
@@ -82,7 +93,7 @@ export default function ComparePage() {
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-foreground text-balance">영상 비교</h1>
         <p className="mt-1 text-sm text-muted leading-relaxed">
-          분석한 두 영상을 나란히 놓고 동시에 재생·정지·이동하며 비교합니다.
+          분석한 두 영상을 나란히 놓고, 하나씩 또는 동시에 재생·이동하며 비교합니다.
         </p>
         {error && <p className="mt-2 text-xs text-danger">영상 목록을 불러오지 못했어요. 서버 연결을 확인해 주세요.</p>}
       </div>
@@ -92,14 +103,30 @@ export default function ComparePage() {
         {picker("B", selB)}
       </div>
 
-      {/* 공통 조작 */}
+      {/* 조작 */}
       <div className="mb-3 p-3 bg-surface rounded-lg border border-border space-y-3">
+        <div className="grid grid-cols-3 gap-1 p-1 bg-surface-2 rounded-lg" role="radiogroup" aria-label="조작할 영상">
+          {([["A", "A 영상"], ["B", "B 영상"], ["both", "동시"]] as const).map(([v, l]) => (
+            <button
+              key={v}
+              role="radio"
+              aria-checked={target === v}
+              onClick={() => setTarget(v)}
+              className={cn(
+                "py-1.5 rounded-md text-sm font-medium transition-colors",
+                target === v ? "bg-accent text-background" : "text-muted hover:text-foreground"
+              )}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-muted tabular-nums w-12">{fmt(time)}</span>
           <input
             type="range" min={0} max={duration || 0} step={0.05} value={Math.min(time, duration || 0)}
-            disabled={!hasVideo || !duration}
-            onChange={(e) => { pause(); seekAll(parseFloat(e.target.value)); }}
+            disabled={!hasTarget || !duration}
+            onChange={(e) => seekTo(parseFloat(e.target.value))}
             className="flex-1 accent-[var(--color-accent)]"
             aria-label="재생 위치"
           />
@@ -108,26 +135,26 @@ export default function ComparePage() {
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1">
-            <button onClick={() => { pause(); seekAll(0); }} disabled={!hasVideo} aria-label="처음으로"
+            <button onClick={toStart} disabled={!hasTarget} aria-label="처음으로"
               className="p-2 rounded-lg bg-surface-2 border border-border text-muted hover:text-foreground disabled:opacity-40">
               <SkipBack className="w-4 h-4" />
             </button>
-            <button onClick={() => step(-STEP)} disabled={!hasVideo} aria-label="0.1초 뒤로"
+            <button onClick={() => moveBy(-STEP)} disabled={!hasTarget} aria-label="0.1초 뒤로"
               className="p-2 rounded-lg bg-surface-2 border border-border text-muted hover:text-foreground disabled:opacity-40">
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
-              onClick={isPlaying ? pause : play}
-              disabled={!hasVideo}
+              onClick={playing ? pause : play}
+              disabled={!hasTarget}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold",
-                !hasVideo ? "bg-surface-2 text-muted cursor-not-allowed" : "bg-accent text-background hover:opacity-90"
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold min-w-[7.5rem] justify-center",
+                !hasTarget ? "bg-surface-2 text-muted cursor-not-allowed" : "bg-accent text-background hover:opacity-90"
               )}
             >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              {isPlaying ? "정지" : "동시 재생"}
+              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {(target === "both" ? "동시 " : `${target} `) + (playing ? "정지" : "재생")}
             </button>
-            <button onClick={() => step(STEP)} disabled={!hasVideo} aria-label="0.1초 앞으로"
+            <button onClick={() => moveBy(STEP)} disabled={!hasTarget} aria-label="0.1초 앞으로"
               className="p-2 rounded-lg bg-surface-2 border border-border text-muted hover:text-foreground disabled:opacity-40">
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -148,12 +175,16 @@ export default function ComparePage() {
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-muted">확대: 휠·두 손가락·더블클릭 · 확대한 뒤 드래그로 이동 · ◀ ▶ 0.1초씩 이동</p>
+        <p className="text-[11px] text-muted leading-relaxed">
+          시작점 맞추기: A 영상·B 영상을 하나씩 골라 같은 동작 순간에 멈춘 뒤 &apos;동시&apos;로 재생하세요. · ◀ ▶ 0.1초씩 이동 · 확대: 휠·두 손가락·더블클릭
+        </p>
       </div>
       {/* 세로 영상 두 개를 휴대폰에서도 나란히 */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4">
-        <ZoomableVideo ref={refA} path={pathOf(selA)} label="A" onTime={onTime("A")} />
-        <ZoomableVideo ref={refB} path={pathOf(selB)} label="B" onTime={onTime("B")} />
+        <ZoomableVideo ref={refA} path={pathOf(selA)} label={`A · ${fmt(tA)}`} onTime={onTime("A")}
+          onPlayingChange={setPlayA} active={target !== "B" && !!selA} />
+        <ZoomableVideo ref={refB} path={pathOf(selB)} label={`B · ${fmt(tB)}`} onTime={onTime("B")}
+          onPlayingChange={setPlayB} active={target !== "A" && !!selB} />
       </div>
 
     </div>

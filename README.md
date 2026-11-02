@@ -21,6 +21,24 @@ Vercel에 배포된 Next.js 웹에서 사용자 PC의 분석 서버(FastAPI + YO
 
 ## 분석 서버 실행 (Windows, C:\Project 기준)
 
+### 원클릭 실행 (권장)
+
+`C:\Project\CPAP 서버 시작.bat` 을 더블클릭하면 아래를 자동으로 합니다.
+
+1. `.venv` 가상환경 확인 (없으면 생성) → 필요한 패키지 확인·설치 (NVIDIA GPU면 CUDA용 PyTorch)
+2. ngrok 토큰 확인 → 없으면 **처음 한 번만** 물어보고 `server\config.json` 에 저장
+   (선택: ngrok 무료 고정 도메인을 입력하면 휴대폰 주소가 매번 같아집니다)
+3. 서버 + ngrok 실행
+4. **연결 페이지**(`http://localhost:8000/connect`)를 자동으로 열기
+   - 📱 휴대폰: QR 코드를 카메라로 찍으면 서버 주소가 입력된 채로 웹이 열립니다
+   - 💻 이 PC: '분석 웹 열기' 버튼 (ngrok 없이 localhost로 연결)
+5. 처음 실행 때 바탕화면 바로가기 만들기 (선택)
+
+터미널 창을 닫거나 Ctrl+C 를 누르면 서버가 꺼집니다. 이미 켜져 있을 때 다시 실행하면 연결 페이지만 엽니다.
+웹 주소가 바뀌면 `server\config.json` 의 `web_url` 을 수정하세요.
+
+### 수동 실행
+
 ### 1. 의존성 (최초 1회)
 
 ```bash

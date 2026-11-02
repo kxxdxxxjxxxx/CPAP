@@ -50,6 +50,9 @@ def load_config():
         "pose_conf": 0.25,
         # Vercel 배포 주소와 로컬 개발 주소만 허용 (정규식)
         "allowed_origin_regex": r"https://.*\.vercel\.app|http://localhost(:\d+)?|http://127\.0\.0\.1(:\d+)?",
+        "web_url": "https://climbingposeanalyzer-local.vercel.app",   # 웹 화면 주소 (QR 코드에 사용)
+        "ngrok_domain": "",   # ngrok 고정 도메인 (예: my-name.ngrok-free.app). 비우면 실행할 때마다 주소가 바뀜
+        "ngrok_token": "",    # launcher.py 가 처음 실행 때 물어보고 저장
     }
     legacy = os.path.join(HERE, "..", "params.json")
     if os.path.exists(legacy):
@@ -213,18 +216,122 @@ def _public(j):
 # API
 # ────────────────────────────────────────────────────────────────────────────
 _ngrok_url = ""
+_ngrok_error = ""
+_PORT = 8000
+
+
+def _gpu_name():
+    try:
+        import torch
+        return torch.cuda.get_device_name(0) if torch.cuda.is_available() else ""
+    except Exception:
+        return ""
 
 
 @app.get("/ping")
 def ping():
-    return {"status": "ok", "version": VERSION, "ngrok_url": _ngrok_url,
+    return {"status": "ok", "version": VERSION, "ngrok_url": _ngrok_url, "web_url": CFG["web_url"],
             "pose_model": os.path.basename(CFG["pose_model_path"]),
             "height_range": HEIGHT_RANGE, "wingspan_range": WINGSPAN_RANGE}
 
 
 @app.get("/tunnel")
 def tunnel():
-    return {"ngrok_url": _ngrok_url, "active": bool(_ngrok_url)}
+    return {"ngrok_url": _ngrok_url, "active": bool(_ngrok_url), "error": _ngrok_error}
+
+
+CONNECT_HTML = """<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CPAP 서버 연결</title>
+<style>
+ :root{--bg:#0c0d10;--s:#13151b;--s2:#1c1f28;--b:#252830;--f:#e8eaf0;--m:#8b93a1;--a:#22c55e;--w:#f59e0b}
+ *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--f);font:15px/1.6 system-ui,"Malgun Gothic",sans-serif}
+ main{max-width:860px;margin:0 auto;padding:28px 16px}
+ h1{font-size:22px;margin:0 0 4px} .sub{color:var(--m);margin:0 0 20px}
+ .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px} @media(max-width:700px){.grid{grid-template-columns:1fr}}
+ .card{background:var(--s);border:1px solid var(--b);border-radius:12px;padding:18px}
+ .card h2{font-size:15px;margin:0 0 10px} .muted{color:var(--m);font-size:13px}
+ #qr{background:#fff;padding:12px;border-radius:8px;display:inline-block;margin:6px 0 10px}
+ a.btn{display:inline-block;background:var(--a);color:#06120a;font-weight:700;text-decoration:none;padding:10px 16px;border-radius:8px}
+ code{background:var(--s2);border:1px solid var(--b);border-radius:6px;padding:2px 6px;font-size:12px;word-break:break-all}
+ .row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--b);font-size:14px}
+ .row:last-child{border:0} .ok{color:var(--a)} .warn{color:var(--w)}
+</style></head><body><main>
+<h1>CPAP 분석 서버 연결</h1>
+<p class="sub">서버가 켜져 있는 동안 이 창은 닫아도 됩니다. 터미널 창을 닫으면 서버가 꺼집니다.</p>
+<div class="grid">
+ <div class="card">
+  <h2>📱 휴대폰으로 연결</h2>
+  <div id="mobile"></div>
+ </div>
+ <div class="card">
+  <h2>💻 이 PC에서 열기</h2>
+  <p class="muted">같은 PC에서는 ngrok 없이 바로 연결됩니다.</p>
+  <a class="btn" id="pc" href="#">분석 웹 열기</a>
+  <h2 style="margin-top:22px">서버 상태</h2>
+  <div class="row"><span>버전</span><span>v__VERSION__</span></div>
+  <div class="row"><span>GPU</span><span class="__GPU_CLS__">__GPU__</span></div>
+  <div class="row"><span>포즈 모델</span><span>__MODEL__</span></div>
+  <div class="row"><span>외부 접속(ngrok)</span><span class="__NG_CLS__">__NG_STATE__</span></div>
+ </div>
+</div>
+<p class="muted" style="margin-top:18px">휴대폰 영상은 1080p로 찍으면 업로드가 빠릅니다. ngrok 무료 요금제는 월 전송량 한도가 있어 4K 영상은 피하세요.</p>
+</main>
+<template id="qrsvg">__QR_SVG__</template>
+<script>
+ const WEB="__WEB__", NGROK="__NGROK__", PORT="__PORT__";
+ const pcUrl = WEB + "/?server=" + encodeURIComponent("http://localhost:" + PORT);
+ document.getElementById("pc").href = pcUrl;
+ const m = document.getElementById("mobile");
+ if (NGROK) {
+   const url = WEB + "/?server=" + encodeURIComponent(NGROK);
+   m.innerHTML = '<p class="muted">휴대폰 카메라로 QR 코드를 찍으면 서버 주소가 자동으로 입력된 채로 열립니다.</p><div id="qr"></div><p class="muted">서버 주소: <code>' + NGROK + '</code></p>';
+   const svg = document.getElementById("qrsvg").innerHTML.trim();
+   if (svg) document.getElementById("qr").innerHTML = svg;
+   else document.getElementById("qr").outerHTML = '<p><a href="' + url + '">' + url + '</a></p>';
+ } else {
+   m.innerHTML = '<p class="warn">ngrok이 연결되지 않아 휴대폰에서는 접속할 수 없습니다.</p><p class="muted">__NG_ERR__</p><p class="muted">CPAP 서버 시작 프로그램을 다시 실행해 ngrok 토큰을 입력하세요.</p>';
+ }
+</script></body></html>"""
+
+
+def _qr_svg(text, size=220):
+    """OpenCV로 QR 코드를 만들어 SVG 문자열로 (인터넷·추가 패키지 없이 동작)."""
+    try:
+        import cv2
+        import numpy as np
+        img = cv2.QRCodeEncoder.create().encode(text)      # 모듈 1칸 = 1px, 여백 포함
+        if img is None or img.size == 0:
+            return ""
+        if img.ndim == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        n = img.shape[0]
+        dark = np.argwhere(img < 128)
+        rects = "".join(f'<rect x="{x}" y="{y}" width="1" height="1"/>' for y, x in dark)
+        return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" width="{size}" height="{size}" '
+                f'shape-rendering="crispEdges"><rect width="{n}" height="{n}" fill="#fff"/><g fill="#000">{rects}</g></svg>')
+    except Exception:
+        return ""
+
+
+@app.get("/connect")
+def connect_page():
+    from fastapi.responses import HTMLResponse
+    import html as _h
+    from urllib.parse import quote as _quote
+    gpu = _gpu_name()
+    page = (CONNECT_HTML
+            .replace("__VERSION__", VERSION)
+            .replace("__GPU_CLS__", "ok" if gpu else "warn").replace("__GPU__", _h.escape(gpu or "없음 (CPU로 느리게 동작)"))
+            .replace("__MODEL__", _h.escape(os.path.basename(CFG["pose_model_path"])))
+            .replace("__NG_CLS__", "ok" if _ngrok_url else "warn")
+            .replace("__NG_STATE__", "연결됨" if _ngrok_url else "꺼짐")
+            .replace("__NG_ERR__", _h.escape(_ngrok_error))
+            .replace("__WEB__", CFG["web_url"].rstrip("/"))
+            .replace("__NGROK__", _ngrok_url)
+            .replace("__QR_SVG__", _qr_svg(f"{CFG['web_url'].rstrip('/')}/?server={_quote(_ngrok_url, safe='')}") if _ngrok_url else "")
+            .replace("__PORT__", str(_PORT)))
+    return HTMLResponse(page)
 
 
 @app.post("/upload")
@@ -317,6 +424,8 @@ def _find_ngrok_token(cli_token=""):
         return cli_token, "--token"
     if os.environ.get("NGROK_AUTHTOKEN"):
         return os.environ["NGROK_AUTHTOKEN"], "NGROK_AUTHTOKEN 환경변수"
+    if CFG.get("ngrok_token"):
+        return CFG["ngrok_token"], "server/config.json"
     home = os.path.expanduser("~")
     candidates = [
         os.path.join(os.environ.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local")), "ngrok", "ngrok.yml"),
@@ -340,17 +449,26 @@ def _find_ngrok_token(cli_token=""):
 
 
 def _start_ngrok(port, token=""):
-    global _ngrok_url
+    global _ngrok_url, _ngrok_error
     try:
         import ngrok as ngrok_sdk
-        if token:
-            ngrok_sdk.set_auth_token(token)
-        listener = ngrok_sdk.forward(port, authtoken_from_env=not bool(token))
+        opts = {"authtoken": token} if token else {"authtoken_from_env": True}
+        domain = (CFG.get("ngrok_domain") or "").strip().replace("https://", "").rstrip("/")
+        try:
+            listener = ngrok_sdk.forward(port, domain=domain, **opts) if domain else ngrok_sdk.forward(port, **opts)
+        except Exception as e:
+            if not domain:
+                raise
+            print(f"[ngrok] 고정 도메인({domain}) 연결 실패: {e} → 임시 주소로 다시 시도합니다.")
+            listener = ngrok_sdk.forward(port, **opts)
         _ngrok_url = listener.url()
+        _ngrok_error = ""
         print(f"\n{'=' * 60}\n  ngrok 공개 URL: {_ngrok_url}\n  웹 상단 '로컬 서버' 입력란에 이 주소를 넣으세요.\n{'=' * 60}\n")
     except ImportError:
-        print("[ERROR] ngrok 패키지가 없습니다: pip install ngrok")
+        _ngrok_error = "ngrok 패키지가 없습니다 (pip install ngrok)"
+        print("[ERROR] " + _ngrok_error)
     except Exception as e:
+        _ngrok_error = f"ngrok 시작 실패: {e}"
         print(f"[ERROR] ngrok 시작 실패: {e}")
         if "4018" in str(e) or "authenticated" in str(e):
             print("  → ngrok 토큰이 없거나 잘못되었습니다. 아래 중 하나를 실행한 뒤 다시 시작하세요.")
@@ -369,6 +487,7 @@ if __name__ == "__main__":
     ap.add_argument("--ngrok", action="store_true")
     ap.add_argument("--token", default="")
     a = ap.parse_args()
+    _PORT = a.port
     if a.ngrok:
         tok, src = _find_ngrok_token(a.token)
         if tok:
@@ -376,6 +495,7 @@ if __name__ == "__main__":
             threading.Thread(target=_start_ngrok, args=(a.port, tok), daemon=True).start()
             time.sleep(2)
         else:
+            _ngrok_error = "ngrok 토큰이 설정되지 않았습니다."
             print("[ngrok] 토큰을 찾지 못해 ngrok 없이 시작합니다.")
             print("  → set NGROK_AUTHTOKEN=토큰  (또는 setx 로 영구 저장) 후 다시 실행하세요.")
             print("     토큰 확인: https://dashboard.ngrok.com/get-started/your-authtoken")

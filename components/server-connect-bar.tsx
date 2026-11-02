@@ -64,6 +64,21 @@ export default function ServerConnectBar({ onStatusChange, onToggleSidebar, side
   }, [onStatusChange]);
 
   useEffect(() => {
+    // 서버 연결 페이지의 QR 코드로 들어온 경우: ?server=주소 를 저장하고 주소창에서는 지운다
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromLink = (params.get("server") || "").trim();
+      if (fromLink && /^(https:\/\/[^\s]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)\/?$/i.test(fromLink)) {
+        setServerUrl(fromLink);
+      }
+      if (params.has("server")) {
+        params.delete("server");
+        const rest = params.toString();
+        window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+      }
+    } catch {
+      /* 무시 */
+    }
     const saved = getServerUrl();
     setUrl(saved);
     setDraft(saved);

@@ -9,6 +9,9 @@ interface ZoomableVideoProps {
   path: string;
   label: string;
   onTime?: (t: number, duration: number) => void;
+  onPlayingChange?: (playing: boolean) => void;
+  /** 지금 조작 대상인지 (테두리 강조) */
+  active?: boolean;
 }
 
 export interface ZoomableVideoHandle {
@@ -17,6 +20,8 @@ export interface ZoomableVideoHandle {
   setPlaybackRate: (rate: number) => void;
   seek: (t: number) => void;
   duration: () => number;
+  currentTime: () => number;
+  isPlaying: () => boolean;
 }
 
 const MAX_ZOOM = 5;
@@ -26,7 +31,7 @@ const MAX_ZOOM = 5;
  * ngrok 무료 플랜은 <video src> 직접 요청에 경고 페이지를 주고, HTTPS 사이트에서 localhost 영상을 막는 브라우저도 있어
  * 영상을 헤더와 함께 받아와(blob) 재생한다.
  */
-const ZoomableVideo = forwardRef<ZoomableVideoHandle, ZoomableVideoProps>(({ path, label, onTime }, ref) => {
+const ZoomableVideo = forwardRef<ZoomableVideoHandle, ZoomableVideoProps>(({ path, label, onTime, onPlayingChange, active }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [blobUrl, setBlobUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -72,6 +77,8 @@ const ZoomableVideo = forwardRef<ZoomableVideoHandle, ZoomableVideoProps>(({ pat
       if (v && Number.isFinite(v.duration)) v.currentTime = Math.min(Math.max(0, t), v.duration);
     },
     duration: () => videoRef.current?.duration || 0,
+    currentTime: () => videoRef.current?.currentTime || 0,
+    isPlaying: () => { const v = videoRef.current; return !!v && !v.paused && !v.ended; },
   }));
 
   function resetZoom() { setScale(1); setTx(0); setTy(0); }
@@ -129,7 +136,7 @@ const ZoomableVideo = forwardRef<ZoomableVideoHandle, ZoomableVideoProps>(({ pat
 
       {/* 클라이밍 영상은 세로가 많아 9:16 칸. 화면 높이를 넘지 않게 제한 */}
       <div
-        className="relative w-full max-w-[calc(72vh*9/16)] aspect-[9/16] mx-auto bg-black rounded-lg overflow-hidden select-none touch-none"
+        className={`relative w-full max-w-[calc(72vh*9/16)] aspect-[9/16] mx-auto bg-black rounded-lg overflow-hidden select-none touch-none ring-2 transition-shadow ${active ? "ring-accent" : "ring-transparent"}`}
         style={{ cursor: blobUrl ? (scale > 1 ? "grab" : "zoom-in") : "default" }}
         onWheel={onWheel}
         onPointerDown={onPointerDown}
@@ -146,7 +153,11 @@ const ZoomableVideo = forwardRef<ZoomableVideoHandle, ZoomableVideoProps>(({ pat
             playsInline
             preload="auto"
             onTimeUpdate={(e) => onTime?.(e.currentTarget.currentTime, e.currentTarget.duration || 0)}
+            onSeeked={(e) => onTime?.(e.currentTarget.currentTime, e.currentTarget.duration || 0)}
             onLoadedMetadata={(e) => onTime?.(0, e.currentTarget.duration || 0)}
+            onPlay={() => onPlayingChange?.(true)}
+            onPause={(e) => { onPlayingChange?.(false); onTime?.(e.currentTarget.currentTime, e.currentTarget.duration || 0); }}
+            onEnded={() => onPlayingChange?.(false)}
             className="absolute inset-0 w-full h-full object-contain pointer-events-none"
             style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})`, transformOrigin: "center center" }}
           />
